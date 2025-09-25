@@ -4,13 +4,16 @@
   "type": "module",
   "scripts": {
     "start": "kill-port 3000 && node server.js",
-    "dev": "kill-port 3000 && NODE_ENV=development node server.js"
+    "dev": "kill-port 3000 && NODE_ENV=development node server.js",
+    "db:setup": "psql -d negotiation_game -f database/schema.sql",
+    "db:reset": "psql -d negotiation_game -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && npm run db:setup"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^4.21.2",
     "node-fetch": "^3.3.2",
+    "pg": "^8.16.3",
     "socket.io": "^4.8.1",
     "uuid": "^9.0.1"
   },

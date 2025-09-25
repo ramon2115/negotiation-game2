@@ -4,6 +4,8 @@ import { Server } from "socket.io";
 import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 import { pairUsers, assignRoles } from "./src/pairing.js";
+import { persistence } from "./src/persistence.js";
+import { GameAnalytics } from "./src/analytics.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -54,42 +56,45 @@ app.post("/moderator/verify", (req, res) => {
 });
 
 // Survey and game config API routes
-app.get("/api/survey", (req, res) => {
-  res.json(gameConfig.survey);
+app.get("/api/survey", async (req, res) => {
+  try {
+    const config = await persistence.getGameConfig();
+    res.json(config?.survey || gameConfig.survey);
+  } catch (error) {
+    console.error('❌ Error getting survey config:', error);
+    res.json(gameConfig.survey);
+  }
 });
 
-app.post("/api/survey/submit", (req, res) => {
-  const { responses } = req.body;
-  
-  // Create new user with survey data
-  const userId = uuidv4();
-  const playerName = responses.find(r => r.questionId === 1)?.answer || 'Anonymous';
-  
-  const newUser = {
-    id: userId,
-    name: playerName,
-    surveyResponses: responses,
-    surveyCompleted: true,
-    createdAt: new Date().toISOString(),
-    currentRound: 0,
-    completedRounds: 0,
-    completedDeals: 0,
-    previousPartners: [],
-    roleHistory: [], // Track buyer/seller history
-    roomId: null,
-    socketId: null,
-    role: null,
-    pairId: null
-  };
-  
-  users[userId] = newUser;
-  
-  res.json({ 
-    success: true, 
-    userId: userId,
-    playerName: playerName,
-    message: "Survey completed successfully" 
-  });
+app.post("/api/survey/submit", async (req, res) => {
+  try {
+    const { responses } = req.body;
+    const playerName = responses.find(r => r.questionId === 1)?.answer || 'Anonymous';
+    
+    const newUser = await persistence.createUser({
+      name: playerName,
+      surveyResponses: responses,
+      surveyCompleted: true
+    });
+    
+    // Also store in legacy format for compatibility
+    users[newUser.id] = {
+      ...newUser,
+      previousPartners: [],
+      roleHistory: [],
+      socketId: null
+    };
+    
+    res.json({ 
+      success: true, 
+      userId: newUser.id,
+      playerName: playerName,
+      message: "Survey completed successfully" 
+    });
+  } catch (error) {
+    console.error('❌ Error creating user:', error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 });
 
 app.get("/api/rooms", (req, res) => {
@@ -139,6 +144,49 @@ app.get("/moderator/config", (req, res) => {
     success: true,
     config: gameConfig
   });
+});
+
+// Analytics endpoints
+app.get("/moderator/analytics/deals", async (req, res) => {
+  const { token } = req.query;
+  
+  if (token !== MODERATOR_TOKEN) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+  
+  try {
+    const [stats, deals, patterns, initialOffers, offerPatterns] = await Promise.all([
+      GameAnalytics.getDealStats(),
+      GameAnalytics.getDealsWithDuration(),
+      GameAnalytics.getNegotiationPatterns(),
+      GameAnalytics.getInitialOffers(),
+      GameAnalytics.getOfferPatterns()
+    ]);
+    
+    res.json({
+      success: true,
+      data: { stats, deals, patterns, initialOffers, offerPatterns }
+    });
+  } catch (error) {
+    console.error('❌ Analytics error:', error);
+    res.status(500).json({ success: false, message: "Analytics error" });
+  }
+});
+
+app.get("/moderator/analytics/timeline", async (req, res) => {
+  const { token } = req.query;
+  
+  if (token !== MODERATOR_TOKEN) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+  
+  try {
+    const timeline = await GameAnalytics.getDealTimeline();
+    res.json({ success: true, data: timeline });
+  } catch (error) {
+    console.error('❌ Timeline analytics error:', error);
+    res.status(500).json({ success: false, message: "Timeline error" });
+  }
 });
 
 // In-memory stores
@@ -856,6 +904,42 @@ io.on("connection", (socket) => {
     // Store message in pair
     pair.messages.push(payload);
 
+    // Update latest offers if an offer was extracted
+    if (offerData.offer !== null) {
+      pair.latestOffers[role] = offerData.offer;
+      
+      // 💾 Update pair's latest offers in database
+      try {
+        await persistence.updatePair(user.pairId, { 
+          latestOffers: pair.latestOffers 
+        });
+        console.log(`💰 Updated latest offers for pair ${user.pairId}: ${role} = $${offerData.offer}`);
+      } catch (error) {
+        console.error('❌ Failed to update latest offers:', error);
+      }
+    }
+
+    // 💾 Save message to database
+    try {
+      await persistence.saveMessage({
+        pairId: user.pairId,
+        userId: user.id,
+        userName: user.name,
+        role,
+        message,
+        extractedOffer: offerData.offer,
+        offerConfidence: offerData.confidence || null,
+        metadata: {
+          numbersFound: offerData.numbersFound,
+          errorCause: offerData.errorCause,
+          rawModelOutput: offerData.rawModelOutput
+        }
+      });
+      console.log(`💾 Message saved to database: ${user.name} in pair ${user.pairId}`);
+    } catch (error) {
+      console.error('❌ Failed to save message to database:', error);
+    }
+
     // Send only to the pair participants
     io.to(`pair:${user.pairId}`).emit("chatLog", payload);
     
@@ -883,7 +967,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("moderator:startRound", ({ roomId }) => {
+  socket.on("moderator:startRound", async ({ roomId }) => {
     // Check moderator authorization
     if (!socket.data?.isModerator) {
       socket.emit("error", { message: "Unauthorized - moderator access required" });
@@ -902,6 +986,16 @@ io.on("connection", (socket) => {
     room.status = 'active';
     room.currentRound = (room.currentRound || 0) + 1;
 
+    // 💾 Update room in database
+    try {
+      await persistence.updateRoom(roomId, {
+        status: 'active',
+        currentRound: room.currentRound
+      });
+    } catch (error) {
+      console.error('❌ Failed to update room in database:', error);
+    }
+
     // Create pairs using new algorithm
     const userPairs = createGamePairs(room.users);
 
@@ -911,7 +1005,8 @@ io.on("connection", (socket) => {
     const currentProduct = products[(room.currentRound - 1) % products.length];
 
     // Create pair objects and join pair rooms
-    const activePairs = userPairs.map(([userA, userB]) => {
+    const activePairs = [];
+    for (const [userA, userB] of userPairs) {
       const pairId = uuidv4();
       
       // Update user objects with pair and round info
@@ -920,6 +1015,12 @@ io.on("connection", (socket) => {
       userA.currentRound = room.currentRound;
       userB.currentRound = room.currentRound;
       
+      const productData = {
+        ...currentProduct,
+        round: room.currentRound,
+        itemId: `${roomId}-${room.currentRound}`,
+      };
+      
       // Create pair object with product info
       const pair = {
         id: pairId,
@@ -927,16 +1028,26 @@ io.on("connection", (socket) => {
         userA,
         userB,
         messages: [],
-        product: {
-          ...currentProduct,
-          round: room.currentRound,
-          itemId: `${roomId}-${room.currentRound}`,
-        },
+        product: productData,
         latestOffers: { A: null, B: null },
         finalDeal: null,
         startedAt: new Date().toISOString()
       };
       pairs[pairId] = pair;
+
+      // 💾 Save pair to database
+      try {
+        await persistence.createPair({
+          roomId,
+          userA,
+          userB,
+          product: productData,
+          roundNumber: room.currentRound
+        });
+        console.log(`💾 Pair ${pairId} saved to database`);
+      } catch (error) {
+        console.error('❌ Failed to save pair to database:', error);
+      }
 
       // Join pair-specific rooms
       const socketA = io.sockets.sockets.get(userA.socketId);
@@ -944,14 +1055,14 @@ io.on("connection", (socket) => {
       if (socketA) socketA.join(`pair:${pairId}`);
       if (socketB) socketB.join(`pair:${pairId}`);
 
-      return {
+      activePairs.push({
         pairId,
         users: [userA, userB],
         product: pair.product,
         latestOffers: { A: null, B: null },
         finalDeal: null,
-      };
-    });
+      });
+    }
 
     room.pairs = activePairs;
 
@@ -1094,7 +1205,7 @@ io.on("connection", (socket) => {
     console.log(`📝 Post-survey submitted by ${user.name}`);
   });
 
-  socket.on("confirmDeal", ({ price }) => {
+  socket.on("confirmDeal", async ({ price }) => {
     if (!socket.data?.userId) {
       socket.emit("error", { message: "Not registered" });
       return;
@@ -1120,20 +1231,30 @@ io.on("connection", (socket) => {
     
     if (otherUser.confirmPrice === price) {
       // Both agreed on same price - deal confirmed!
-      pair.finalDeal = {
-        price,
-        confirmedAt: new Date().toISOString(),
-        userA: pair.userA.id,
-        userB: pair.userB.id
-      };
+      const dealData = GameAnalytics.createDealData(pair, price);
+      
+      pair.finalDeal = dealData;
+
+      // 💾 Save deal to database
+      try {
+        await persistence.updatePair(user.pairId, { 
+          finalDeal: dealData,
+          status: 'completed'
+        });
+        console.log(`💾 Deal saved to database: pair ${pair.id} at $${price}`);
+      } catch (error) {
+        console.error(`❌ Failed to save deal to database:`, error);
+      }
 
       io.to(`pair:${user.pairId}`).emit("dealConfirmed", {
         price,
         pairId: pair.id,
-        message: `Deal confirmed at $${price}!`
+        duration: dealData.durationFormatted,
+        durationSeconds: dealData.durationSeconds,
+        message: `Deal confirmed at $${price}! (took ${dealData.durationFormatted})`
       });
 
-      console.log(`🤝 Deal confirmed in pair ${pair.id} at $${price}`);
+      console.log(`🤝 Deal confirmed in pair ${pair.id} at $${price} (duration: ${dealData.durationFormatted})`);
     } else {
       socket.emit("dealPending", {
         yourPrice: price,
@@ -1278,6 +1399,44 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+// Initialize persistence layer and start server
+async function startServer() {
+  try {
+    console.log('🔄 Initializing database connection...');
+    await persistence.initialize();
+    
+    // Load game configuration from database
+    const config = await persistence.getGameConfig();
+    if (config) {
+      Object.assign(gameConfig, config);
+      console.log('✅ Loaded game configuration from database');
+    }
+    
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`💾 Database persistence: ENABLED`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to initialize server:', error);
+    console.log('🔄 Starting in memory-only mode...');
+    
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`⚠️ Database persistence: DISABLED (using memory only)`);
+    });
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down server...');
+  try {
+    await persistence.close();
+    console.log('💾 Database connection closed');
+  } catch (error) {
+    console.error('❌ Error closing database:', error);
+  }
+  process.exit(0);
 });
+
+startServer();

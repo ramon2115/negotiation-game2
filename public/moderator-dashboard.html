@@ -327,7 +327,11 @@
           <td class="offer-amount">${pair.latestOffer ? '$' + pair.latestOffer.amount : 'No offers'}</td>
           <td>${pair.latestOffer ? (pair.latestOffer.role === 'A' ? pair.userA.name : pair.userB.name) : '-'}</td>
           <td class="timestamp">${pair.latestOffer ? new Date(pair.latestOffer.timestamp).toLocaleTimeString() : '-'}</td>
-          <td><span class="status-badge ${pair.finalDeal ? 'status-completed' : 'status-active'}">${pair.finalDeal ? 'Deal: $' + pair.finalDeal.price : 'Negotiating'}</span></td>
+          <td><span class="status-badge ${pair.finalDeal ? 'status-completed' : 'status-active'}">${
+             pair.finalDeal 
+               ? `Deal: $${pair.finalDeal.price}${pair.finalDeal.durationFormatted ? ' (' + pair.finalDeal.durationFormatted + ')' : ''}`
+               : 'Negotiating'
+           }</span></td>
           <td>
             <button class="btn btn-secondary" onclick="viewPairDetails('${pair.id}')">View</button>
           </td>
