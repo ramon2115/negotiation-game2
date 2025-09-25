@@ -1,0 +1,772 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Negotiation Round - Negotiation Game</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 0;
+      min-height: 100vh;
+      background: #f8f9fa;
+    }
+    
+    .game-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .round-info h1 {
+      margin: 0;
+      font-size: 1.4em;
+    }
+    
+    .round-info p {
+      margin: 5px 0 0 0;
+      opacity: 0.9;
+      font-size: 0.9em;
+    }
+    
+    .player-info {
+      text-align: center;
+      background: rgba(255,255,255,0.1);
+      padding: 15px 20px;
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .role-badge {
+      padding: 12px 24px;
+      border-radius: 25px;
+      font-weight: bold;
+      font-size: 1.1em;
+      margin-bottom: 8px;
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .role-seller {
+      background: #f44336;
+      color: white;
+      border: 3px solid #d32f2f;
+    }
+    
+    .role-buyer {
+      background: #4caf50;
+      color: white;
+      border: 3px solid #388e3c;
+    }
+    
+    .game-container {
+      display: grid;
+      grid-template-columns: 300px 1fr 300px;
+      gap: 20px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+      min-height: calc(100vh - 80px);
+    }
+    
+    .product-panel {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      padding: 20px;
+      height: fit-content;
+    }
+    
+    .product-image {
+      width: 100%;
+      height: 200px;
+      background: #f0f0f0;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4em;
+      margin-bottom: 20px;
+      background-size: cover;
+      background-position: center;
+    }
+    
+    .product-name {
+      font-size: 1.3em;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 15px;
+    }
+    
+    .role-specific-info {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    
+    .info-label {
+      font-size: 0.8em;
+      font-weight: bold;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    
+    .info-text {
+      color: #333;
+      line-height: 1.5;
+    }
+    
+    .negotiation-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .chat-section {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .partner-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .partner-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+    }
+    
+    .timer {
+      font-weight: bold;
+      color: #f44336;
+      font-size: 1.1em;
+    }
+    
+    .chat-box {
+      border: 2px solid #f0f0f0;
+      border-radius: 10px;
+      padding: 15px;
+      height: 300px;
+      overflow-y: auto;
+      background: #fafafa;
+      margin-bottom: 15px;
+      flex: 1;
+    }
+    
+    .chat-message {
+      margin: 10px 0;
+      padding: 10px 15px;
+      border-radius: 10px;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+    
+    .chat-message.me {
+      margin-left: auto;
+      margin-right: 0;
+      background: #e3f2fd;
+      border: 1px solid #2196f3;
+    }
+    
+    .chat-message.other {
+      margin-left: 0;
+      margin-right: auto;
+      background: white;
+      border: 1px solid #ddd;
+    }
+    
+    .message-header {
+      font-size: 0.8em;
+      color: #666;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    .message-text {
+      color: #333;
+    }
+    
+    .chat-input-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .chat-input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 50px;
+    }
+    
+    .chat-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .send-btn {
+      padding: 12px 20px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    
+    .send-btn:hover {
+      background: #45a049;
+    }
+    
+    .deal-section {
+      background: #fff3e0;
+      border: 2px solid #ff9800;
+      border-radius: 10px;
+      padding: 15px;
+    }
+    
+    .deal-input {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    
+    .deal-input input {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #ff9800;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+    
+    .confirm-btn {
+      padding: 10px 20px;
+      background: #ff9800;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    
+    .confirm-btn:hover {
+      background: #f57c00;
+    }
+    
+    .deal-instructions {
+      font-size: 0.9em;
+      color: #e65100;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+    
+    .stats-panel {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      padding: 20px;
+      height: fit-content;
+    }
+    
+    .progress-section h3 {
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    
+    .stat-item {
+      text-align: center;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    
+    .stat-number {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    .stat-label {
+      font-size: 0.8em;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1200px) {
+      .game-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        gap: 15px;
+        padding: 15px;
+      }
+      
+      .game-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+      }
+      
+      .player-info {
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-header">
+    <div class="round-info">
+      <h1 id="roundTitle">Round 1 - Electronics</h1>
+      <p id="roundSubtitle">Negotiate the best deal you can!</p>
+    </div>
+    <div class="player-info">
+      <div class="role-badge" id="roleBadge">BUYER</div>
+      <div id="playerName">Loading...</div>
+    </div>
+  </div>
+
+  <div class="game-container">
+    <!-- Product Information Panel -->
+    <div class="product-panel">
+      <div class="product-image" id="productImage">📱</div>
+      <div class="product-name" id="productName">iPhone 14 Pro</div>
+      
+      <div class="role-specific-info" id="roleSpecificInfo">
+        <div class="info-label">For Buyers</div>
+        <div class="info-text" id="infoText">
+          Great camera, latest features, perfect for photography enthusiasts.
+        </div>
+      </div>
+      
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number" id="dealsCompleted">0</div>
+          <div class="stat-label">Deals Made</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="averagePrice">-</div>
+          <div class="stat-label">Avg Price</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Negotiation Panel -->
+    <div class="negotiation-panel">
+      <div class="chat-section">
+        <div class="chat-header">
+          <div class="partner-info">
+            <div class="partner-avatar" id="partnerAvatar">?</div>
+            <div>
+              <div id="partnerName">Finding partner...</div>
+              <div style="font-size: 0.8em; color: #666;" id="partnerRole">-</div>
+            </div>
+          </div>
+          <div class="timer" id="timer">15:00</div>
+        </div>
+        
+        <div class="chat-box" id="chatBox">
+          <div id="initialMessage" style="text-align: center; color: #666; padding: 20px;">
+            Loading game state...
+          </div>
+        </div>
+        
+        <div class="chat-input-section">
+          <textarea 
+            id="messageInput" 
+            class="chat-input" 
+            placeholder="Type your negotiation message here..."
+            rows="2"
+          ></textarea>
+          <button class="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+        
+        <div class="deal-section">
+          <strong>💰 Confirm Final Deal</strong>
+          <div class="deal-input">
+            <input 
+              type="number" 
+              id="dealPrice" 
+              placeholder="Final price" 
+              min="1"
+            />
+            <button class="confirm-btn" onclick="confirmDeal()">Confirm Deal</button>
+          </div>
+          <div class="deal-instructions">
+            Both players must enter the same final price to complete the deal.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress Panel -->
+    <div class="stats-panel">
+      <div class="progress-section">
+        <h3>Game Progress</h3>
+        <div style="margin-bottom: 10px;">
+          Round <span id="currentRoundNum">1</span> of <span id="totalRounds">10</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill" style="width: 10%"></div>
+        </div>
+      </div>
+      
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number" id="roundsAsbuyer">0</div>
+          <div class="stat-label">Buyer Rounds</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="roundsAsSeller">0</div>
+          <div class="stat-label">Seller Rounds</div>
+        </div>
+      </div>
+      
+      <div style="margin-top: 20px; text-align: center;">
+        <button 
+          style="background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer;"
+          onclick="leaveGame()"
+        >
+          Leave Game
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket;
+    let userId = localStorage.getItem('negotiation-userId');
+    let playerName = localStorage.getItem('negotiation-playerName');
+    let roomId = localStorage.getItem('negotiation-roomId');
+    let currentRound = 1;
+    let myRole = null;
+    let partnerId = null;
+    let partnerName = null;
+    let gameTimer = null;
+    let timeRemaining = 15 * 60; // 15 minutes
+
+    // Check session
+    if (!userId || !playerName || !roomId) {
+      window.location.href = '/room-selection.html';
+    }
+
+    function updateRoleDisplay(role, product) {
+      console.log(`🎭 updateRoleDisplay called with role: ${role}, product:`, product);
+      
+      myRole = role;
+      const badge = document.getElementById('roleBadge');
+      const infoSection = document.getElementById('roleSpecificInfo');
+      const infoLabel = infoSection.querySelector('.info-label');
+      const infoText = document.getElementById('infoText');
+      
+      if (role === 'A') {
+        badge.textContent = 'SELLER';
+        badge.className = 'role-badge role-seller';
+        infoLabel.textContent = 'For Sellers';
+        infoText.textContent = product?.sellerInfo || 'You are selling this item.';
+        console.log('✅ Set role display to SELLER');
+      } else {
+        badge.textContent = 'BUYER';
+        badge.className = 'role-badge role-buyer';
+        infoLabel.textContent = 'For Buyers';
+        infoText.textContent = product?.buyerInfo || 'You are buying this item.';
+        console.log('✅ Set role display to BUYER');
+      }
+      
+      // Also update the header player info
+      document.getElementById('playerName').textContent = playerName + ` (${role === 'A' ? 'SELLER' : 'BUYER'})`;
+    }
+
+    function updateProductDisplay(product) {
+      document.getElementById('productName').textContent = product.name || 'Unknown Item';
+      // Set product emoji/icon based on category
+      const icons = {
+        'iPhone': '📱', 'MacBook': '💻', 'PlayStation': '🎮',
+        'Coffee Table': '🪑', 'Stand Mixer': '🥄', 'Garden Tools': '🌿',
+        'Handbag': '👜', 'Running Shoes': '👟', 'Leather Jacket': '🧥'
+      };
+      const icon = Object.keys(icons).find(key => product.name?.includes(key)) || '📦';
+      document.getElementById('productImage').textContent = icons[icon] || '📦';
+    }
+
+    function startTimer() {
+      gameTimer = setInterval(() => {
+        timeRemaining--;
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        document.getElementById('timer').textContent = 
+          `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        if (timeRemaining <= 0) {
+          clearInterval(gameTimer);
+          endRound();
+        }
+      }, 1000);
+    }
+
+    function addChatMessage(data) {
+      const chatBox = document.getElementById('chatBox');
+      
+      // Clear initial messages
+      const initialMsg = document.getElementById('initialMessage');
+      if (initialMsg) {
+        initialMsg.remove();
+      }
+
+      const messageDiv = document.createElement('div');
+      const isMe = data.userId === userId;
+      messageDiv.className = `chat-message ${isMe ? 'me' : 'other'}`;
+      
+      const header = document.createElement('div');
+      header.className = 'message-header';
+      header.textContent = `${data.userName} (${data.role === 'A' ? 'SELLER' : 'BUYER'}) - ${new Date(data.timestamp).toLocaleTimeString()}`;
+      
+      const text = document.createElement('div');
+      text.className = 'message-text';
+      text.textContent = data.message;
+      
+      messageDiv.appendChild(header);
+      messageDiv.appendChild(text);
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+      if (!message) return;
+      
+      socket.emit('chatMessage', { message });
+      input.value = '';
+    }
+
+    function confirmDeal() {
+      const priceInput = document.getElementById('dealPrice');
+      const price = parseFloat(priceInput.value);
+      
+      if (!price || price <= 0) {
+        alert('Please enter a valid price');
+        return;
+      }
+      
+      socket.emit('confirmDeal', { price });
+    }
+
+    function endRound() {
+      // Handle round end
+      alert('Time is up! Moving to next round...');
+      // TODO: Handle round progression
+    }
+
+    function showWaitingToBePaired() {
+      const chatBox = document.getElementById('chatBox');
+      chatBox.innerHTML = `
+        <div id="initialMessage" style="text-align: center; color: #666; padding: 30px; background: #fff3e0; border-radius: 10px; margin: 20px;">
+          <div style="font-size: 3em; margin-bottom: 15px;">⏳</div>
+          <h3 style="margin: 0 0 10px 0;">Waiting to be paired...</h3>
+          <p style="margin: 0; color: #999;">Looking for another player to negotiate with.</p>
+        </div>
+      `;
+    }
+
+    function showWaitingForModerator() {
+      const chatBox = document.getElementById('chatBox');
+      chatBox.innerHTML = `
+        <div id="initialMessage" style="text-align: center; color: #333; padding: 30px; background: #e8f5e8; border-radius: 10px; margin: 20px; border: 2px solid #4caf50;">
+          <div style="font-size: 3em; margin-bottom: 15px;">🎮</div>
+          <h3 style="margin: 0 0 10px 0; color: #2e7d32;">Ready to Negotiate!</h3>
+          <p style="margin: 0 0 15px 0; color: #388e3c;">You've been paired with <strong>${partnerName}</strong></p>
+          <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <strong>⏳ Waiting for moderator to start the round...</strong>
+            <div style="font-size: 14px; color: #666; margin-top: 8px;">
+              The moderator will begin the negotiation when ready. 
+              Once started, you'll have 15 minutes to negotiate and reach a deal.
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function startActiveNegotiation() {
+      // Clear waiting messages and start timer
+      const chatBox = document.getElementById('chatBox');
+      const initialMsg = document.getElementById('initialMessage');
+      if (initialMsg) {
+        initialMsg.remove();
+      }
+      
+      // Add negotiation start message
+      const startMsg = document.createElement('div');
+      startMsg.style.cssText = 'text-align: center; background: #4caf50; color: white; padding: 15px; margin: 10px 0; border-radius: 8px; font-weight: bold;';
+      startMsg.innerHTML = '🚀 <strong>Negotiation Started!</strong> You have 15 minutes to reach a deal.';
+      chatBox.appendChild(startMsg);
+      
+      startTimer();
+    }
+
+    function leaveGame() {
+      if (confirm('Are you sure you want to leave the game? Your progress will be saved.')) {
+        localStorage.removeItem('negotiation-pairing');
+        socket.emit('leaveRoom', { roomId });
+        window.location.href = '/room-selection.html';
+      }
+    }
+
+    function initializeSocket() {
+      socket = io();
+      
+      // First join the room (this will trigger auto-pairing if needed)
+      console.log('🏪 Joining room and requesting pairing...');
+      socket.emit('joinRoom', { userId, roomId, playerName });
+      
+      // Also connect to game interface and request current pairing status
+      socket.emit('joinGameInterface', { userId });
+      socket.emit('requestPairingStatus');
+      
+      // Handle both manual and auto-pairing
+      function handlePairAssignment(data) {
+        console.log('🎯 handlePairAssignment called with:', data);
+        
+        partnerId = data.partner.id;
+        partnerName = data.partner.name;
+        myRole = data.myRole;
+        
+        console.log(`🎭 Setting my role to: ${myRole} (${myRole === 'A' ? 'SELLER' : 'BUYER'})`);
+        console.log(`👥 Partner: ${partnerName} with role ${data.partner.role} (${data.partner.role === 'A' ? 'SELLER' : 'BUYER'})`);
+        
+        // Update partner info
+        document.getElementById('partnerName').textContent = partnerName;
+        document.getElementById('partnerRole').textContent = data.partner.role === 'A' ? 'SELLER' : 'BUYER';
+        document.getElementById('partnerAvatar').textContent = partnerName.charAt(0).toUpperCase();
+        
+        // Update my role display
+        updateRoleDisplay(data.myRole, data.product);
+        updateProductDisplay(data.product);
+        
+        // Store pairing data
+        localStorage.setItem('negotiation-pairing', JSON.stringify({
+          ...data,
+          paired: true,
+          timestamp: Date.now()
+        }));
+        
+        console.log('✅ Pairing assignment complete, showing waiting for moderator');
+        showWaitingForModerator();
+      }
+
+      socket.on('roomJoined', (data) => {
+        console.log('🏪 Joined room successfully:', data);
+        // Room join successful - pairing will happen automatically
+      });
+
+      socket.on('pairingStatus', (data) => {
+        console.log('📨 Received pairing status from server:', data);
+        
+        if (data.paired) {
+          console.log('✅ Server confirms user is paired');
+          handlePairAssignment(data);
+          showWaitingForModerator();
+        } else {
+          console.log('❌ Server says user is not paired - showing waiting state');
+          showWaitingToBePaired();
+        }
+      });
+
+      socket.on('pairAssigned', handlePairAssignment);
+      socket.on('autoPairAssigned', handlePairAssignment);
+
+      socket.on('chatLog', addChatMessage);
+
+      socket.on('roundStart', (data) => {
+        console.log('🎮 Round started by moderator');
+        startActiveNegotiation();
+      });
+
+      socket.on('dealConfirmed', (data) => {
+        alert(`🤝 Deal confirmed at $${data.price}!`);
+        // TODO: Handle round completion
+      });
+
+      socket.on('roundEnd', () => {
+        clearInterval(gameTimer);
+        // TODO: Handle round end
+      });
+
+      // Add enter key support
+      document.getElementById('messageInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey)) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+    }
+
+    // Initialize
+    console.log('🚀 Game page initializing...');
+    console.log('📱 User ID:', userId);
+    console.log('👤 Player Name:', playerName);
+    console.log('🏪 Room ID:', roomId);
+    console.log('💾 localStorage pairing:', localStorage.getItem('negotiation-pairing'));
+    
+    document.getElementById('playerName').textContent = playerName;
+    initializeSocket();
+  </script>
+</body>
+</html>

@@ -1,0 +1,533 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Waiting Room - Negotiation Game</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .waiting-container {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 600px;
+      width: 90%;
+      text-align: center;
+    }
+    
+    .room-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+    }
+    
+    .room-title {
+      font-size: 1.8em;
+      margin: 0 0 5px 0;
+    }
+    
+    .room-subtitle {
+      opacity: 0.9;
+      margin: 0;
+    }
+    
+    .status-section {
+      margin: 30px 0;
+    }
+    
+    .status-icon {
+      font-size: 4em;
+      margin-bottom: 20px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    
+    .status-text {
+      font-size: 1.3em;
+      color: #333;
+      margin-bottom: 15px;
+    }
+    
+    .status-details {
+      color: #666;
+      line-height: 1.6;
+    }
+    
+    .player-info {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    
+    .player-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 2em;
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    .stat-label {
+      font-size: 0.9em;
+      color: #666;
+    }
+    
+    .players-list {
+      background: white;
+      border: 2px solid #f0f0f0;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 0;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .player-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .player-item:last-child {
+      border-bottom: none;
+    }
+    
+    .player-name {
+      font-weight: 500;
+    }
+    
+    .player-status {
+      font-size: 0.8em;
+      padding: 4px 8px;
+      border-radius: 12px;
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+    
+    .progress-section {
+      margin: 30px 0;
+    }
+    
+    .round-progress {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 20px 0;
+    }
+    
+    .round-indicator {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9em;
+      font-weight: bold;
+      background: #f0f0f0;
+      color: #999;
+    }
+    
+    .round-indicator.completed {
+      background: #4caf50;
+      color: white;
+    }
+    
+    .round-indicator.current {
+      background: #667eea;
+      color: white;
+      animation: pulse 2s infinite;
+    }
+    
+    .leave-btn {
+      background: #f44336;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1em;
+      margin-top: 20px;
+      transition: opacity 0.2s;
+    }
+    
+    .leave-btn:hover {
+      opacity: 0.9;
+    }
+    
+    .game-rules {
+      text-align: left;
+      background: #e8f5e8;
+      border-left: 4px solid #4caf50;
+      padding: 20px;
+      border-radius: 0 10px 10px 0;
+      margin: 20px 0;
+    }
+    
+    .game-rules h4 {
+      margin: 0 0 15px 0;
+      color: #2e7d32;
+    }
+    
+    .game-rules ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #1b5e20;
+    }
+
+    @media (max-width: 768px) {
+      .waiting-container {
+        padding: 20px;
+        margin: 10px;
+      }
+      
+      .player-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="waiting-container">
+    <div class="room-header">
+      <h1 class="room-title" id="roomTitle">Electronics Marketplace</h1>
+      <p class="room-subtitle">Waiting for players to join...</p>
+    </div>
+    
+    <div class="status-section">
+      <div class="status-icon" id="statusIcon">⏳</div>
+      <div class="status-text" id="statusText">Finding other players...</div>
+      <div class="status-details" id="statusDetails">
+        We're gathering players for an exciting round of negotiations. 
+        You'll be paired with different players for each of your 10 rounds.
+      </div>
+    </div>
+    
+    <div class="player-info">
+      <h3>Your Game Progress</h3>
+      <div class="player-stats">
+        <div class="stat">
+          <div class="stat-number" id="currentRound">1</div>
+          <div class="stat-label">Current Round</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number" id="completedDeals">0</div>
+          <div class="stat-label">Deals Made</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number" id="gamesPlayed">0</div>
+          <div class="stat-label">Games Played</div>
+        </div>
+      </div>
+      
+      <div class="round-progress" id="roundProgress">
+        <!-- Round indicators will be generated here -->
+      </div>
+    </div>
+    
+    <div class="players-list">
+      <h4>Players in Room (<span id="playerCount">1</span>)</h4>
+      <div id="playersList">
+        <!-- Players will be listed here -->
+      </div>
+    </div>
+    
+    <div class="game-rules">
+      <h4>🎮 Game Rules Reminder</h4>
+      <ul>
+        <li>You'll play <strong>10 rounds</strong> total</li>
+        <li><strong>Roughly half as buyer</strong>, half as seller (balanced automatically)</li>
+        <li>Each round has a different product and partner</li>
+        <li><strong>Your role is assigned</strong> when you're paired (random for first game)</li>
+        <li>Negotiate the best price you can!</li>
+        <li>Your progress is automatically saved</li>
+      </ul>
+    </div>
+    
+    <button class="leave-btn" onclick="leaveRoom()">Leave Room</button>
+  </div>
+
+  <script>
+    let socket;
+    let userId = localStorage.getItem('negotiation-userId');
+    let playerName = localStorage.getItem('negotiation-playerName');
+    let roomId = localStorage.getItem('negotiation-roomId');
+    let roomName = localStorage.getItem('negotiation-roomName');
+    
+    // Check if user has proper session
+    if (!userId || !playerName || !roomId) {
+      window.location.href = '/room-selection.html';
+    }
+
+    function updateStatus(icon, text, details) {
+      document.getElementById('statusIcon').textContent = icon;
+      document.getElementById('statusText').textContent = text;
+      document.getElementById('statusDetails').textContent = details;
+    }
+
+    function updatePlayerProgress(user) {
+      document.getElementById('currentRound').textContent = (user.currentRound || 0) + 1;
+      document.getElementById('completedDeals').textContent = user.completedDeals || 0;
+      document.getElementById('gamesPlayed').textContent = user.roleHistory?.length || 0;
+    }
+
+    function createRoundProgress(currentRound, completedRounds) {
+      const container = document.getElementById('roundProgress');
+      container.innerHTML = '';
+      
+      for (let i = 1; i <= 10; i++) {
+        const indicator = document.createElement('div');
+        indicator.className = 'round-indicator';
+        indicator.textContent = i;
+        
+        if (i <= completedRounds) {
+          indicator.classList.add('completed');
+        } else if (i === currentRound + 1) {
+          indicator.classList.add('current');
+        }
+        
+        container.appendChild(indicator);
+      }
+    }
+
+    function updatePlayersList(players) {
+      const container = document.getElementById('playersList');
+      const countElement = document.getElementById('playerCount');
+      
+      countElement.textContent = players.length;
+      
+      container.innerHTML = players.map(player => {
+        const isMe = player.id === userId;
+        return `
+          <div class="player-item">
+            <span class="player-name">${player.name}${isMe ? ' <strong style="color: #667eea;">(You)</strong>' : ''}</span>
+            <span class="player-status">${player.status || 'Ready'}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function leaveRoom() {
+      if (confirm('Are you sure you want to leave? Your progress will be saved.')) {
+        socket.emit('leaveRoom', { roomId });
+        window.location.href = '/room-selection.html';
+      }
+    }
+
+    function initializeSocket() {
+      socket = io();
+      
+      // Join the room
+      socket.emit('joinRoom', { 
+        userId, 
+        roomId, 
+        playerName 
+      });
+
+      socket.on('roomJoined', (data) => {
+        document.getElementById('roomTitle').textContent = roomName + ' Marketplace';
+        updatePlayerProgress(data.user);
+        updatePlayersList(data.players);
+        createRoundProgress(data.user.currentRound || 0, data.user.completedRounds || 0);
+        
+        if (data.players.length < 2) {
+          updateStatus('👥', 'Waiting for more players...', 
+            'We need at least 2 players to start a round. Invite your friends!');
+        } else {
+          updateStatus('✅', 'Ready to start!', 
+            'Enough players are here. The moderator can now start the round.');
+        }
+      });
+
+      socket.on('playerJoined', (data) => {
+        updatePlayersList(data.players);
+        updateStatus('🎉', `${data.newPlayer.name} joined!`, 
+          `${data.players.length} players are now in the room.`);
+      });
+
+      socket.on('playerLeft', (data) => {
+        updatePlayersList(data.players);
+        updateStatus('👋', `${data.leftPlayer.name} left`, 
+          `${data.players.length} players remaining in the room.`);
+      });
+
+      socket.on('roundStart', (data) => {
+        updateStatus('🎮', 'Round starting!', 
+          `Round ${data.roundNumber} is beginning. You'll be paired soon...`);
+        
+        setTimeout(() => {
+          window.location.href = '/game.html';
+        }, 2000);
+      });
+
+      socket.on('gamePaused', (data) => {
+        updateStatus('⏸️', 'Game paused', 
+          'The moderator has paused the game. Please wait...');
+      });
+
+      socket.on('gameResumed', (data) => {
+        updateStatus('▶️', 'Game resumed', 
+          'The game has been resumed. Get ready for the next round!');
+      });
+
+      socket.on('autoPairAssigned', (data) => {
+        showPairingConfirmation(data);
+      });
+      
+      function showPairingConfirmation(data) {
+        // Store pairing data globally for later use
+        window.currentPairingData = data;
+        
+        // Hide other sections and show pairing confirmation
+        document.querySelector('.status-section').style.display = 'none';
+        document.querySelector('.player-info').style.display = 'none';
+        document.querySelector('.players-list').style.display = 'none';
+        document.querySelector('.game-rules').style.display = 'none';
+        document.querySelector('.leave-btn').style.display = 'none';
+        
+        // Create pairing confirmation section
+        const container = document.querySelector('.waiting-container');
+        
+        const confirmationDiv = document.createElement('div');
+        confirmationDiv.id = 'pairingConfirmation';
+        confirmationDiv.innerHTML = `
+          <div style="text-align: center; padding: 30px;">
+            <div style="font-size: 4em; margin-bottom: 20px;">🤝</div>
+            <h2 style="color: #333; margin-bottom: 15px;">You've Been Paired!</h2>
+            
+            <div style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin: 20px 0;">
+              <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: center;">
+                <div style="text-align: center;">
+                  <div style="font-size: 2em; margin-bottom: 10px;">👤</div>
+                  <strong style="font-size: 1.2em;">${myName}</strong>
+                  <div style="margin-top: 8px;">
+                    <span class="role-badge ${data.myRole === 'A' ? 'role-seller' : 'role-buyer'}" style="padding: 6px 12px; border-radius: 20px; font-weight: bold;">
+                      ${data.myRole === 'A' ? 'SELLER' : 'BUYER'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div style="font-size: 2em; color: #667eea;">VS</div>
+                
+                <div style="text-align: center;">
+                  <div style="font-size: 2em; margin-bottom: 10px;">👤</div>
+                  <strong style="font-size: 1.2em;">${data.partner.name}</strong>
+                  <div style="margin-top: 8px;">
+                    <span class="role-badge ${data.partner.role === 'A' ? 'role-seller' : 'role-buyer'}" style="padding: 6px 12px; border-radius: 20px; font-weight: bold;">
+                      ${data.partner.role === 'A' ? 'SELLER' : 'BUYER'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 10px;">
+                <strong>📦 Product: ${data.product.name}</strong>
+                <div style="color: #666; margin-top: 5px;">
+                  ${data.myRole === 'A' ? data.product.sellerInfo : data.product.buyerInfo}
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              id="startNegotiationBtn"
+              style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 18px 40px; font-size: 1.2em; border: none; border-radius: 25px; cursor: pointer; margin: 20px 0;"
+              onclick="startNegotiation()"
+            >
+              Start Negotiation
+            </button>
+            
+            <div style="color: #666; font-size: 14px;">
+              Auto-starting in <span id="countdown" style="font-weight: bold; color: #f44336;">5</span> seconds...
+            </div>
+          </div>
+        `;
+        
+        container.appendChild(confirmationDiv);
+        
+        // Add CSS for role badges if not already present
+        const style = document.createElement('style');
+        style.textContent = `
+          .role-seller { background: rgba(244, 67, 54, 0.2); color: #d32f2f; border: 2px solid rgba(244, 67, 54, 0.3); }
+          .role-buyer { background: rgba(76, 175, 80, 0.2); color: #388e3c; border: 2px solid rgba(76, 175, 80, 0.3); }
+        `;
+        document.head.appendChild(style);
+        
+        // Start 5-second countdown
+        let timeLeft = 5;
+        const countdownElement = document.getElementById('countdown');
+        
+        const countdownTimer = setInterval(() => {
+          timeLeft--;
+          countdownElement.textContent = timeLeft;
+          
+          if (timeLeft <= 0) {
+            clearInterval(countdownTimer);
+            startNegotiation();
+          }
+        }, 1000);
+        
+        // Store countdown timer to clear if user clicks button
+        window.pairingCountdown = countdownTimer;
+      }
+      
+      function startNegotiation() {
+        if (window.pairingCountdown) {
+          clearInterval(window.pairingCountdown);
+        }
+        // Store pairing data for game interface
+        const pairingData = window.currentPairingData;
+        if (pairingData) {
+          localStorage.setItem('negotiation-pairing', JSON.stringify({
+            myRole: pairingData.myRole,
+            partner: pairingData.partner,
+            product: pairingData.product,
+            paired: true,
+            timestamp: Date.now()
+          }));
+        }
+        window.location.href = '/game.html';
+      }
+      
+      // Make startNegotiation globally accessible
+      window.startNegotiation = startNegotiation;
+
+      socket.on('error', (data) => {
+        alert('Error: ' + data.message);
+      });
+    }
+
+    // Initialize
+    document.getElementById('roomTitle').textContent = roomName + ' Marketplace';
+    initializeSocket();
+  </script>
+</body>
+</html>

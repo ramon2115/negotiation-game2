@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Moderator Login - Negotiation Game</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      max-width: 400px; 
+      margin: 100px auto; 
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    
+    .login-container {
+      background: white;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 400px;
+    }
+    
+    h1 { 
+      text-align: center; 
+      color: #333; 
+      margin-bottom: 30px;
+      font-size: 24px;
+    }
+    
+    .form-group { 
+      margin: 20px 0; 
+    }
+    
+    label { 
+      display: block; 
+      margin-bottom: 8px; 
+      color: #555; 
+      font-weight: bold;
+    }
+    
+    input { 
+      width: 100%; 
+      padding: 12px; 
+      border: 2px solid #ddd; 
+      border-radius: 5px; 
+      font-size: 16px; 
+      box-sizing: border-box;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    button { 
+      width: 100%; 
+      padding: 15px; 
+      background: #4CAF50; 
+      color: white; 
+      border: none; 
+      border-radius: 5px; 
+      font-size: 16px; 
+      cursor: pointer; 
+      margin-top: 10px;
+    }
+    
+    button:hover { 
+      background: #45a049; 
+    }
+    
+    .error { 
+      color: #f44336; 
+      text-align: center; 
+      margin-top: 15px; 
+      padding: 10px;
+      background: #ffebee;
+      border-radius: 5px;
+      display: none;
+    }
+    
+    .back-link {
+      text-align: center;
+      margin-top: 20px;
+    }
+    
+    .back-link a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    
+    .back-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>🛡️ Moderator Login</h1>
+    
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="token">Moderator Token</label>
+        <input type="password" id="token" placeholder="Enter moderator token" required />
+      </div>
+      
+      <button type="submit">Login to Dashboard</button>
+    </form>
+    
+    <div id="error" class="error"></div>
+    
+    <div class="back-link">
+      <a href="/test-client.html">← Back to Game Client</a>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const token = document.getElementById('token').value;
+      const errorDiv = document.getElementById('error');
+      
+      try {
+        // Try to authenticate with the server
+        const response = await fetch('/moderator/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token })
+        });
+        
+        if (response.ok) {
+          // Store token and redirect to dashboard
+          localStorage.setItem('moderator-token', token);
+          window.location.href = '/moderator-dashboard.html';
+        } else {
+          const data = await response.json();
+          errorDiv.textContent = data.message || 'Invalid token';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Connection error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    });
+    
+    // Check if already authenticated
+    const storedToken = localStorage.getItem('moderator-token');
+    if (storedToken) {
+      fetch('/moderator/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token: storedToken })
+      })
+      .then(response => {
+        if (response.ok) {
+          window.location.href = '/moderator-dashboard.html';
+        }
+      })
+      .catch(() => {
+        // Token invalid, continue with login
+        localStorage.removeItem('moderator-token');
+      });
+    }
+  </script>
+</body>
+</html>

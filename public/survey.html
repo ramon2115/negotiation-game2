@@ -1,0 +1,404 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Pre-Game Survey - Negotiation Game</title>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 20px;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .survey-container {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 600px;
+      width: 100%;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .header h1 {
+      font-size: 2.2em;
+      color: #333;
+      margin: 0 0 10px 0;
+    }
+    
+    .header p {
+      color: #666;
+      font-size: 1.1em;
+      line-height: 1.6;
+    }
+    
+    .question {
+      margin-bottom: 30px;
+      padding-bottom: 25px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .question:last-child {
+      border-bottom: none;
+    }
+    
+    .question-label {
+      font-size: 1.1em;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+      display: block;
+    }
+    
+    .required {
+      color: #f44336;
+    }
+    
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+    
+    .submit-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    
+    .submit-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+    }
+    
+    .error {
+      color: #f44336;
+      font-size: 14px;
+      margin-top: 5px;
+      display: none;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #eee;
+      border-radius: 2px;
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+      .survey-container {
+        padding: 30px 20px;
+        margin: 10px;
+      }
+      
+      .header h1 {
+        font-size: 1.8em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="survey-container">
+    <div class="header">
+      <h1>📋 Pre-Game Survey</h1>
+      <p>Before you start playing, we'd like to learn a bit about you. This helps us create a better gaming experience.</p>
+    </div>
+    
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    
+    <form id="surveyForm">
+      <div id="questionsContainer">
+        <!-- Questions will be loaded here -->
+      </div>
+      
+      <button type="submit" class="submit-btn" id="submitBtn">Complete Survey & Continue</button>
+      
+      <div class="loading" id="loading">
+        <p>🔄 Submitting your responses...</p>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    let surveyQuestions = [];
+    let responses = {};
+
+    function updateProgress() {
+      const totalQuestions = surveyQuestions.length;
+      const completedQuestions = Object.keys(responses).length;
+      const percentage = totalQuestions > 0 ? (completedQuestions / totalQuestions) * 100 : 0;
+      
+      document.getElementById('progressFill').style.width = percentage + '%';
+      
+      // Enable/disable submit button
+      const requiredQuestions = surveyQuestions.filter(q => q.required);
+      const completedRequired = requiredQuestions.filter(q => responses[q.id]).length;
+      document.getElementById('submitBtn').disabled = completedRequired < requiredQuestions.length;
+    }
+
+    function renderQuestion(question) {
+      const questionDiv = document.createElement('div');
+      questionDiv.className = 'question';
+      
+      const label = document.createElement('label');
+      label.className = 'question-label';
+      label.innerHTML = question.question + (question.required ? ' <span class="required">*</span>' : '');
+      
+      let input;
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'error';
+      errorDiv.id = `error-${question.id}`;
+      
+      switch (question.type) {
+        case 'text':
+          input = document.createElement('input');
+          input.type = 'text';
+          input.id = `question-${question.id}`;
+          input.addEventListener('input', (e) => {
+            responses[question.id] = { questionId: question.id, answer: e.target.value };
+            updateProgress();
+            hideError(question.id);
+          });
+          break;
+          
+        case 'number':
+          input = document.createElement('input');
+          input.type = 'number';
+          input.id = `question-${question.id}`;
+          if (question.min !== undefined) input.min = question.min;
+          if (question.max !== undefined) input.max = question.max;
+          input.addEventListener('input', (e) => {
+            responses[question.id] = { questionId: question.id, answer: parseInt(e.target.value) };
+            updateProgress();
+            hideError(question.id);
+          });
+          break;
+          
+        case 'select':
+          input = document.createElement('select');
+          input.id = `question-${question.id}`;
+          
+          const defaultOption = document.createElement('option');
+          defaultOption.value = '';
+          defaultOption.textContent = 'Please select...';
+          input.appendChild(defaultOption);
+          
+          question.options.forEach(option => {
+            const optionElement = document.createElement('option');
+            optionElement.value = option;
+            optionElement.textContent = option;
+            input.appendChild(optionElement);
+          });
+          
+          input.addEventListener('change', (e) => {
+            if (e.target.value) {
+              responses[question.id] = { questionId: question.id, answer: e.target.value };
+            } else {
+              delete responses[question.id];
+            }
+            updateProgress();
+            hideError(question.id);
+          });
+          break;
+          
+        case 'textarea':
+          input = document.createElement('textarea');
+          input.id = `question-${question.id}`;
+          input.rows = 4;
+          input.addEventListener('input', (e) => {
+            responses[question.id] = { questionId: question.id, answer: e.target.value };
+            updateProgress();
+            hideError(question.id);
+          });
+          break;
+      }
+      
+      questionDiv.appendChild(label);
+      questionDiv.appendChild(input);
+      questionDiv.appendChild(errorDiv);
+      
+      return questionDiv;
+    }
+
+    function showError(questionId, message) {
+      const errorDiv = document.getElementById(`error-${questionId}`);
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+    }
+    
+    function hideError(questionId) {
+      const errorDiv = document.getElementById(`error-${questionId}`);
+      errorDiv.style.display = 'none';
+    }
+
+    function validateResponses() {
+      let isValid = true;
+      
+      surveyQuestions.forEach(question => {
+        if (question.required && !responses[question.id]) {
+          showError(question.id, 'This field is required.');
+          isValid = false;
+        } else if (responses[question.id]) {
+          const answer = responses[question.id].answer;
+          
+          if (question.type === 'number') {
+            if (question.min !== undefined && answer < question.min) {
+              showError(question.id, `Minimum value is ${question.min}.`);
+              isValid = false;
+            } else if (question.max !== undefined && answer > question.max) {
+              showError(question.id, `Maximum value is ${question.max}.`);
+              isValid = false;
+            }
+          }
+          
+          if (question.type === 'text' && answer.trim().length < 2) {
+            showError(question.id, 'Please provide a valid answer.');
+            isValid = false;
+          }
+        }
+      });
+      
+      return isValid;
+    }
+
+    async function loadSurvey() {
+      // Check if user already has an ID and came from room selection - if so, redirect back
+      const existingUserId = localStorage.getItem('negotiation-userId');
+      const fromRoomSelection = document.referrer.includes('room-selection');
+      
+      if (existingUserId && !fromRoomSelection) {
+        // Only auto-redirect if they didn't come from room selection (back button)
+        if (confirm('You already have a session. Do you want to continue to room selection or restart the survey?')) {
+          window.location.href = '/room-selection.html';
+          return;
+        } else {
+          // They want to restart - clear the session
+          localStorage.removeItem('negotiation-userId');
+          localStorage.removeItem('negotiation-playerName');
+        }
+      }
+      
+      try {
+        const response = await fetch('/api/survey');
+        const data = await response.json();
+        surveyQuestions = data.questions;
+        
+        const container = document.getElementById('questionsContainer');
+        surveyQuestions.forEach(question => {
+          container.appendChild(renderQuestion(question));
+        });
+        
+        updateProgress();
+      } catch (error) {
+        alert('Error loading survey. Please refresh and try again.');
+      }
+    }
+
+    document.getElementById('surveyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      if (!validateResponses()) {
+        return;
+      }
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const loading = document.getElementById('loading');
+      
+      submitBtn.style.display = 'none';
+      loading.style.display = 'block';
+      
+      try {
+        const response = await fetch('/api/survey/submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            responses: Object.values(responses)
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Store user ID for next steps
+          localStorage.setItem('negotiation-userId', result.userId);
+          localStorage.setItem('negotiation-playerName', result.playerName);
+          
+          // Redirect to room selection
+          window.location.href = '/room-selection.html';
+        } else {
+          throw new Error(result.message || 'Survey submission failed');
+        }
+      } catch (error) {
+        alert('Error submitting survey: ' + error.message);
+        submitBtn.style.display = 'block';
+        loading.style.display = 'none';
+      }
+    });
+
+    // Load survey on page load
+    loadSurvey();
+  </script>
+</body>
+</html>

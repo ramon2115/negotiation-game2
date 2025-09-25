@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Reset Session - Negotiation Game</title>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 20px;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .reset-container {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .btn {
+      display: inline-block;
+      padding: 15px 30px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    
+    .btn:hover {
+      opacity: 0.9;
+    }
+    
+    .btn-primary {
+      background: #4CAF50;
+      color: white;
+    }
+    
+    .btn-secondary {
+      background: #2196F3;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="reset-container">
+    <h1>🔄 Reset Session</h1>
+    <p>This will clear all your session data and start fresh.</p>
+    
+    <button class="btn btn-primary" onclick="resetAndStart()">Reset & Start Survey</button>
+    <a href="/index.html" class="btn btn-secondary">Back to Home</a>
+    
+    <div style="margin-top: 30px; font-size: 14px; color: #666;">
+      <strong>For Testing:</strong><br>
+      Use this to clear localStorage and test with multiple identities in the same browser.
+    </div>
+  </div>
+
+  <script>
+    function resetAndStart() {
+      // Clear all session data
+      localStorage.clear();
+      
+      // Also clear any server-side data if needed
+      // (In production, this might call an API endpoint)
+      
+      alert('Session cleared! Starting fresh...');
+      window.location.href = '/survey.html';
+    }
+  </script>
+</body>
+</html>

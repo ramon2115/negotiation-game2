@@ -1,0 +1,548 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Moderator Dashboard - Negotiation Game</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 0; 
+      background: #f5f5f5;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .header h1 {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .logout-btn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    
+    .logout-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .dashboard-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 2em;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+    
+    .stat-label {
+      color: #666;
+      font-size: 14px;
+    }
+    
+    .section {
+      background: white;
+      margin: 20px 0;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .section h2 {
+      margin-top: 0;
+      color: #333;
+      border-bottom: 2px solid #f0f0f0;
+      padding-bottom: 10px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    tr:hover {
+      background: #f8f9fa;
+    }
+    
+    .status-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .status-active { background: #e8f5e8; color: #4caf50; }
+    .status-waiting { background: #fff3e0; color: #ff9800; }
+    .status-completed { background: #e3f2fd; color: #2196f3; }
+    
+    .role-seller { color: #f44336; font-weight: bold; }
+    .role-buyer { color: #4caf50; font-weight: bold; }
+    
+    .offer-amount {
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    .timestamp {
+      font-size: 12px;
+      color: #999;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .btn-primary { background: #4CAF50; color: white; }
+    .btn-secondary { background: #2196F3; color: white; }
+    .btn-danger { background: #f44336; color: white; }
+    
+    .btn:hover {
+      opacity: 0.9;
+    }
+    
+    .empty-state {
+      text-align: center;
+      color: #999;
+      padding: 40px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <span>🛡️ Moderator Dashboard</span>
+      <a href="#" class="logout-btn" onclick="logout()">Logout</a>
+    </h1>
+  </div>
+
+  <div class="dashboard-container">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number" id="totalUsers">0</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="activeRooms">0</div>
+        <div class="stat-label">Active Rooms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="activePairs">0</div>
+        <div class="stat-label">Active Pairs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="completedDeals">0</div>
+        <div class="stat-label">Completed Deals</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🎮 Room Controls</h2>
+      <div class="controls">
+        <select id="roomSelect" onchange="viewRoomDetails()">
+          <option value="">Select a room...</option>
+        </select>
+        <button class="btn btn-primary" onclick="startRound()">Start Round</button>
+        <button class="btn btn-secondary" onclick="endRound()">End Round</button>
+        <button class="btn btn-danger" onclick="resetRoom()">Reset Room</button>
+      </div>
+    </div>
+
+    <div class="section" id="roomDetailsSection" style="display: none;">
+      <h2>🏪 Room Details: <span id="selectedRoomName">-</span></h2>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+        <div>
+          <h4>⏳ Waiting Players (<span id="waitingCount">0</span>)</h4>
+          <div id="waitingPlayersList" style="background: #f9f9f9; padding: 15px; border-radius: 8px; min-height: 100px;">
+            <p style="color: #666; font-style: italic;">No players waiting</p>
+          </div>
+        </div>
+        
+        <div>
+          <h4>👥 Active Pairs (<span id="activePairsCount">0</span>)</h4>
+          <div id="activePairsList" style="background: #f9f9f9; padding: 15px; border-radius: 8px; min-height: 100px;">
+            <p style="color: #666; font-style: italic;">No active pairs</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="controls">
+        <button class="btn btn-secondary" onclick="refreshRoomDetails()">🔄 Refresh</button>
+        <button class="btn btn-primary" onclick="forceAutoPair()" id="forcePairBtn" style="display: none;">🤖 Force Auto-Pair</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>📋 Survey Configuration</h2>
+      <div class="controls">
+        <button class="btn btn-secondary" onclick="editSurvey()">Edit Survey Questions</button>
+        <button class="btn btn-secondary" onclick="downloadSurveyData()">Download Survey Data</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🏪 Room Management</h2>
+      <div class="controls">
+        <button class="btn btn-secondary" onclick="editRooms()">Edit Rooms & Products</button>
+        <button class="btn btn-secondary" onclick="downloadGameData()">Download Game Data</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>👥 Active Negotiation Pairs</h2>
+      <table id="pairsTable">
+        <thead>
+          <tr>
+            <th>Room</th>
+            <th>Pair ID</th>
+            <th>Seller</th>
+            <th>Buyer</th>
+            <th>Item</th>
+            <th>Latest Offer</th>
+            <th>Offer By</th>
+            <th>Time</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pairsTableBody">
+          <tr>
+            <td colspan="10" class="empty-state">No active pairs. Start a round to see negotiation data.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>📊 Recent Activity</h2>
+      <div id="activityLog" style="height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #f9f9f9;">
+        <div class="empty-state">Activity will appear here...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket;
+    let moderatorToken;
+    
+    function logout() {
+      localStorage.removeItem('moderator-token');
+      window.location.href = '/moderator-login.html';
+    }
+    
+    function log(message, type = 'info') {
+      const activityLog = document.getElementById('activityLog');
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.style.cssText = 'margin: 5px 0; padding: 5px; border-left: 3px solid #667eea; background: white; border-radius: 3px;';
+      logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+      
+      if (activityLog.innerHTML.includes('Activity will appear here')) {
+        activityLog.innerHTML = '';
+      }
+      
+      activityLog.appendChild(logEntry);
+      activityLog.scrollTop = activityLog.scrollHeight;
+    }
+    
+    function updateStats(stats) {
+      document.getElementById('totalUsers').textContent = stats.totalUsers || 0;
+      document.getElementById('activeRooms').textContent = stats.activeRooms || 0;
+      document.getElementById('activePairs').textContent = stats.activePairs || 0;
+      document.getElementById('completedDeals').textContent = stats.completedDeals || 0;
+    }
+    
+    function updatePairsTable(pairs) {
+      const tbody = document.getElementById('pairsTableBody');
+      
+      if (!pairs || pairs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No active pairs. Start a round to see negotiation data.</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = pairs.map(pair => `
+        <tr>
+          <td>${pair.roomId}</td>
+          <td>${pair.id.substring(0, 8)}...</td>
+          <td class="role-seller">${pair.userA.name} (A)</td>
+          <td class="role-buyer">${pair.userB.name} (B)</td>
+          <td>${pair.item || 'N/A'}</td>
+          <td class="offer-amount">${pair.latestOffer ? '$' + pair.latestOffer.amount : 'No offers'}</td>
+          <td>${pair.latestOffer ? (pair.latestOffer.role === 'A' ? pair.userA.name : pair.userB.name) : '-'}</td>
+          <td class="timestamp">${pair.latestOffer ? new Date(pair.latestOffer.timestamp).toLocaleTimeString() : '-'}</td>
+          <td><span class="status-badge ${pair.finalDeal ? 'status-completed' : 'status-active'}">${pair.finalDeal ? 'Deal: $' + pair.finalDeal.price : 'Negotiating'}</span></td>
+          <td>
+            <button class="btn btn-secondary" onclick="viewPairDetails('${pair.id}')">View</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    
+    function startRound() {
+      const roomId = document.getElementById('roomSelect').value;
+      if (!roomId) {
+        alert('Please select a room first');
+        return;
+      }
+      
+      socket.emit('moderator:startRound', { roomId });
+      log(`🎮 Starting round in room ${roomId}`, 'action');
+    }
+    
+    function endRound() {
+      const roomId = document.getElementById('roomSelect').value;
+      if (!roomId) {
+        alert('Please select a room first');
+        return;
+      }
+      
+      socket.emit('moderator:endRound', { roomId });
+      log(`🛑 Ending round in room ${roomId}`, 'action');
+    }
+    
+    function resetRoom() {
+      const roomId = document.getElementById('roomSelect').value;
+      if (!roomId) {
+        alert('Please select a room first');
+        return;
+      }
+      
+      if (confirm(`Are you sure you want to reset room ${roomId}? This will clear all users and data.`)) {
+        socket.emit('moderator:resetRoom', { roomId });
+        log(`🔄 Resetting room ${roomId}`, 'action');
+      }
+    }
+    
+    function viewPairDetails(pairId) {
+      // TODO: Implement pair details view
+      alert('Pair details view coming soon!');
+    }
+
+    function editSurvey() {
+      alert('Survey editor coming soon! For now, survey questions can be modified in the server configuration.');
+    }
+
+    function editRooms() {
+      alert('Room editor coming soon! For now, rooms and products can be modified in the server configuration.');
+    }
+
+    function downloadSurveyData() {
+      // TODO: Implement survey data export
+      alert('Survey data export coming soon!');
+    }
+
+    function downloadGameData() {
+      // TODO: Implement game data export
+      alert('Game data export coming soon!');
+    }
+
+    async function loadRoomOptions() {
+      try {
+        const response = await fetch('/api/rooms');
+        const rooms = await response.json();
+        
+        const select = document.getElementById('roomSelect');
+        select.innerHTML = '<option value="">Select a room...</option>';
+        
+        rooms.forEach(room => {
+          const option = document.createElement('option');
+          option.value = room.id;
+          option.textContent = `${room.name} (${room.playerCount || 0} players)`;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
+      }
+    }
+
+    function viewRoomDetails() {
+      const roomId = document.getElementById('roomSelect').value;
+      if (!roomId) {
+        document.getElementById('roomDetailsSection').style.display = 'none';
+        return;
+      }
+
+      socket.emit('moderator:getRoomDetails', { roomId });
+      document.getElementById('roomDetailsSection').style.display = 'block';
+    }
+
+    function refreshRoomDetails() {
+      viewRoomDetails();
+    }
+
+    function forceAutoPair() {
+      const roomId = document.getElementById('roomSelect').value;
+      if (!roomId) return;
+      
+      // This would trigger auto-pairing manually
+      socket.emit('moderator:forceAutoPair', { roomId });
+    }
+
+    function displayRoomDetails(details) {
+      document.getElementById('selectedRoomName').textContent = details.roomId;
+      document.getElementById('waitingCount').textContent = details.waitingUsers.length;
+      document.getElementById('activePairsCount').textContent = details.pairs.length;
+
+      // Display waiting players
+      const waitingList = document.getElementById('waitingPlayersList');
+      if (details.waitingUsers.length === 0) {
+        waitingList.innerHTML = '<p style="color: #666; font-style: italic;">No players waiting</p>';
+      } else {
+        waitingList.innerHTML = details.waitingUsers.map(user => `
+          <div style="padding: 8px; border-bottom: 1px solid #eee;">
+            <strong>${user.name}</strong>
+          </div>
+        `).join('');
+      }
+
+      // Display active pairs
+      const pairsList = document.getElementById('activePairsList');
+      if (details.pairs.length === 0) {
+        pairsList.innerHTML = '<p style="color: #666; font-style: italic;">No active pairs</p>';
+      } else {
+        pairsList.innerHTML = details.pairs.map(pair => `
+          <div style="padding: 8px; border-bottom: 1px solid #eee;">
+            <strong>${pair.userA.name}</strong> (${pair.userA.role === 'A' ? 'SELLER' : 'BUYER'}) 
+            ↔ 
+            <strong>${pair.userB.name}</strong> (${pair.userB.role === 'A' ? 'SELLER' : 'BUYER'})
+            <br>
+            <small style="color: #666;">Product: ${pair.product || 'N/A'}</small>
+          </div>
+        `).join('');
+      }
+
+      // Show force pair button if there are waiting players
+      const forcePairBtn = document.getElementById('forcePairBtn');
+      if (details.waitingUsers.length >= 2) {
+        forcePairBtn.style.display = 'inline-block';
+      } else {
+        forcePairBtn.style.display = 'none';
+      }
+    }
+    
+    // Initialize
+    async function initialize() {
+      moderatorToken = localStorage.getItem('moderator-token');
+      
+      if (!moderatorToken) {
+        window.location.href = '/moderator-login.html';
+        return;
+      }
+      
+      try {
+        // Verify token
+        const response = await fetch('/moderator/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: moderatorToken })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Invalid token');
+        }
+        
+        // Connect to Socket.IO with moderator credentials
+        socket = io();
+        
+        socket.emit('moderator:authenticate', { token: moderatorToken });
+        
+        // Set up socket listeners
+        socket.on('moderator:authenticated', () => {
+          log('🛡️ Moderator authenticated successfully', 'success');
+          // Request initial data
+          socket.emit('moderator:requestData');
+          // Load room options
+          loadRoomOptions();
+        });
+        
+        socket.on('moderator:gameData', (data) => {
+          updateStats(data.stats);
+          updatePairsTable(data.pairs);
+        });
+
+        socket.on('moderator:roomDetails', (details) => {
+          displayRoomDetails(details);
+        });
+        
+        socket.on('moderator:activity', (activity) => {
+          log(activity.message, activity.type);
+          // Auto-refresh room details if viewing a room
+          const currentRoom = document.getElementById('roomSelect').value;
+          if (currentRoom) {
+            setTimeout(() => viewRoomDetails(), 500);
+          }
+        });
+        
+        socket.on('error', (error) => {
+          log(`❌ Error: ${error.message}`, 'error');
+        });
+        
+      } catch (error) {
+        console.error('Authentication failed:', error);
+        localStorage.removeItem('moderator-token');
+        window.location.href = '/moderator-login.html';
+      }
+    }
+    
+    // Start when page loads
+    initialize();
+  </script>
+</body>
+</html>

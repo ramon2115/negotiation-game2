@@ -5,17 +5,68 @@
   <title>Negotiation Test Client</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
-    body { font-family: sans-serif; max-width: 900px; margin: 20px auto; }
-    .log { border: 1px solid #ccc; padding: 8px; height: 240px; overflow: auto; }
+    body { font-family: sans-serif; max-width: 1000px; margin: 20px auto; }
+    .log { border: 1px solid #ccc; padding: 8px; height: 240px; overflow: auto; font-size: 12px; }
+    .chat-container { display: flex; gap: 20px; }
+    .chat-section { flex: 1; }
+    .debug-section { flex: 1; }
+    .chat-box { 
+      border: 2px solid #333; 
+      padding: 10px; 
+      height: 300px; 
+      overflow-y: auto; 
+      background: #f9f9f9; 
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+    .chat-message { 
+      margin: 8px 0; 
+      padding: 8px; 
+      border-radius: 8px; 
+      max-width: 80%;
+    }
+    .chat-message.other { 
+      background: #f5f5f5; 
+      border-left: 3px solid #999; 
+      margin-left: 0;
+      margin-right: 20%;
+    }
+    .chat-message.me {
+      margin-left: 20%;
+      margin-right: 0;
+      background: #e3f2fd;
+      border-left: 3px solid #2196f3;
+    }
+    .message-header { 
+      font-size: 11px; 
+      color: #666; 
+      margin-bottom: 4px; 
+      font-weight: bold;
+    }
+    .message-text { 
+      font-size: 14px; 
+      margin-bottom: 4px;
+    }
+    .message-offer { 
+      font-size: 12px; 
+      color: #ff9800; 
+      font-weight: bold;
+    }
     .row { display: flex; gap: 8px; margin: 8px 0; }
     input, select, button { padding: 6px; }
     #role { font-weight: bold; }
     .seller { color: red; }
     .buyer { color: green; }
+    .chat-input { flex: 1; padding: 8px; font-size: 14px; }
+    .send-btn { padding: 8px 16px; background: #4caf50; color: white; border: none; cursor: pointer; }
+    .send-btn:hover { background: #45a049; }
   </style>
 </head>
 <body>
   <h1>Negotiation Test Client</h1>
+  <div style="text-align: center; margin-bottom: 20px;">
+    <a href="/moderator-login.html" style="color: #667eea; text-decoration: none; padding: 8px 16px; border: 1px solid #667eea; border-radius: 5px;">🛡️ Moderator Dashboard</a>
+  </div>
 
   <div class="row">
     <label>Room:</label>
@@ -27,6 +78,7 @@
       <option value="R5">Entertainment</option>
     </select>
     <input id="name" placeholder="Your name (optional)" />
+    <input id="modToken" placeholder="Moderator token (optional)" type="password" />
     <button id="join">Join</button>
   </div>
 
@@ -36,21 +88,40 @@
   </div>
 
   <div class="row">
-    <input id="msg" placeholder='Type: "I will offer 50 because 60 is too expensive"' style="flex:1;" />
-    <button id="send">Send</button>
-    <input id="price" type="number" placeholder="Confirm price" style="width:140px;" />
-    <button id="confirm">Confirm Deal</button>
-  </div>
-
-  <div class="row">
     <button id="start">Moderator: Start Round</button>
     <button id="end">Moderator: End Round</button>
   </div>
 
   <h3>Your Role: <span id="role">Not assigned yet</span></h3>
 
-  <h3>Events</h3>
-  <div id="log" class="log"></div>
+  <div class="chat-container">
+    <div class="chat-section">
+      <h4>💬 Negotiation Chat</h4>
+      <div id="chatBox" class="chat-box">
+        <div style="text-align: center; color: #666; padding: 20px;">
+          Wait for round to start and get paired with another player...
+        </div>
+      </div>
+      
+      <div class="row">
+        <textarea id="msg" class="chat-input" placeholder='Type your message here... e.g. "I can offer $50"' rows="3" style="resize: vertical; font-family: inherit;"></textarea>
+        <button id="send" class="send-btn">Send</button>
+      </div>
+      
+      <div class="row">
+        <input id="price" type="number" placeholder="Final deal price" style="width:140px;" />
+        <button id="confirm">Confirm Deal</button>
+      </div>
+      <div style="font-size: 12px; color: #666; margin-top: 5px; padding: 0 10px;">
+        💡 <strong>To confirm a deal:</strong> Both players must enter the same final dollar amount above and click "Confirm Deal"
+      </div>
+    </div>
+
+    <div class="debug-section">
+      <h4>🔧 Debug Log</h4>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
 
   <script>
     const log = (x) => {
@@ -61,11 +132,68 @@
 
     const socket = io();
     let roomId = "R1";
+    let userId = localStorage.getItem('negotiation-userId');
+    let isModerator = false;
+    let myRole = null;
+    let myName = "";
+
+    // Chat functionality
+    function addChatMessage(data) {
+      const chatBox = document.getElementById("chatBox");
+      
+      // Clear the "waiting" message if it exists
+      if (chatBox.innerHTML.includes("Wait for round to start")) {
+        chatBox.innerHTML = "";
+      }
+
+      const messageDiv = document.createElement("div");
+      const isMe = data.userId === userId;
+      // Both seller and buyer have their own messages on right, other messages on left
+      const positionClass = isMe ? "me" : "other";
+      
+      messageDiv.className = `chat-message ${positionClass}`;
+      
+      const header = document.createElement("div");
+      header.className = "message-header";
+      header.textContent = `${data.userName || "Anonymous"} (${data.role === "A" ? "SELLER" : "BUYER"}) - ${new Date(data.timestamp).toLocaleTimeString()}`;
+      
+      const text = document.createElement("div");
+      text.className = "message-text";
+      text.textContent = data.message;
+      
+      messageDiv.appendChild(header);
+      messageDiv.appendChild(text);
+      
+      // Remove detected offer display from chat - only show in moderator dashboard
+      
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function sendMessage() {
+      const msgInput = document.getElementById("msg");
+      const message = msgInput.value.trim();
+      if (!message) return;
+      
+      socket.emit("chatMessage", { message });
+      msgInput.value = "";
+    }
+
+    // Add enter key functionality - Ctrl+Enter or Shift+Enter to send (allow Enter for new lines)
+    document.getElementById("msg").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.shiftKey)) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
     document.getElementById("join").onclick = () => {
       roomId = document.getElementById("room").value;
       const name = document.getElementById("name").value;
-      socket.emit("register", { roomId, name });
+      const moderatorToken = document.getElementById("modToken").value;
+      myName = name || "Anonymous";
+      
+      socket.emit("register", { roomId, name: myName, userId, moderatorToken });
       log("Registered to " + roomId);
     };
 
@@ -79,10 +207,7 @@
       log("Post-survey submitted");
     };
 
-    document.getElementById("send").onclick = () => {
-      const msg = document.getElementById("msg").value;
-      socket.emit("chatMessage", { message: msg });
-    };
+    document.getElementById("send").onclick = sendMessage;
 
     document.getElementById("confirm").onclick = () => {
       const p = parseFloat(document.getElementById("price").value);
@@ -101,7 +226,31 @@
     };
 
     // --- Listeners ---
-    ["needPreSurvey","needPostSurvey","roundStart","roundResults","roomUpdate","chatLog","dealLocked","error"]
+    socket.on("registered", (data) => {
+      userId = data.userId;
+      isModerator = data.isModerator;
+      localStorage.setItem('negotiation-userId', userId);
+      log({ evt: 'registered', userId, isModerator });
+      
+      // Show/hide moderator controls
+      const startBtn = document.getElementById("start");
+      if (isModerator) {
+        startBtn.style.backgroundColor = "#4CAF50";
+        startBtn.innerText = "✓ Moderator: Start Round";
+      } else {
+        startBtn.style.backgroundColor = "#ccc";
+        startBtn.innerText = "Moderator: Start Round (No Access)";
+      }
+    });
+
+    // Handle chat messages specially
+    socket.on("chatLog", (payload) => {
+      log({ evt: 'chatLog', payload });
+      addChatMessage(payload);
+    });
+
+    // Handle other events
+    ["needPreSurvey","needPostSurvey","roundStart","roundResults","roomUpdate","dealLocked","error","dealConfirmed","dealPending","partnerConfirming","preSurveyAck","postSurveyAck","chatMessageAck"]
       .forEach(evt => socket.on(evt, (payload) => {
         log({ evt, payload });
 
@@ -109,12 +258,52 @@
         if (evt === "roomUpdate" && payload.activePairs) {
           const me = payload.activePairs
             .flatMap(p => p.users)
-            .find(u => u.id === socket.id);
+            .find(u => u.id === userId);
           if (me?.role) {
+            myRole = me.role;
             const roleSpan = document.getElementById("role");
             roleSpan.innerText = me.role === "A" ? "SELLER" : "BUYER";
             roleSpan.className = me.role === "A" ? "seller" : "buyer";
+            
+            // Clear chat and show pairing message
+            const chatBox = document.getElementById("chatBox");
+            chatBox.innerHTML = `
+              <div style="text-align: center; color: #333; padding: 20px; background: #e8f5e8; border-radius: 5px; margin: 10px 0;">
+                <strong>🤝 You've been paired!</strong><br>
+                You are the <strong>${me.role === "A" ? "SELLER" : "BUYER"}</strong><br>
+                Start negotiating by typing a message below.
+              </div>
+            `;
           }
+        }
+        
+        // Handle round start
+        if (evt === "roundStart") {
+          const chatBox = document.getElementById("chatBox");
+          chatBox.innerHTML = `
+            <div style="text-align: center; color: #333; padding: 20px; background: #fff3e0; border-radius: 5px; margin: 10px 0;">
+              <strong>🎮 Round ${payload.roundNumber} Started!</strong><br>
+              Item: <strong>${payload.item?.name || "Unknown"}</strong><br>
+              Waiting to be paired with another player...
+            </div>
+          `;
+        }
+        
+        // Handle deal confirmations
+        if (evt === "dealConfirmed") {
+          alert("🤝 " + payload.message);
+          const chatBox = document.getElementById("chatBox");
+          const dealDiv = document.createElement("div");
+          dealDiv.style.cssText = "text-align: center; color: #4caf50; padding: 15px; background: #e8f5e8; border-radius: 5px; margin: 10px 0; font-weight: bold; border: 2px solid #4caf50;";
+          dealDiv.innerHTML = `🤝 <strong>DEAL CONFIRMED!</strong><br>Final Price: $${payload.price}`;
+          chatBox.appendChild(dealDiv);
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        if (evt === "dealPending") {
+          alert("⏳ " + payload.message);
+        }
+        if (evt === "partnerConfirming") {
+          alert("💰 " + payload.message);
         }
       }));
   </script>
