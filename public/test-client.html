@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Negotiation Test Client</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 20px auto; }
+    .log { border: 1px solid #ccc; padding: 8px; height: 240px; overflow: auto; }
+    .row { display: flex; gap: 8px; margin: 8px 0; }
+    input, select, button { padding: 6px; }
+    #role { font-weight: bold; }
+    .seller { color: red; }
+    .buyer { color: green; }
+  </style>
+</head>
+<body>
+  <h1>Negotiation Test Client</h1>
+
+  <div class="row">
+    <label>Room:</label>
+    <select id="room">
+      <option value="R1">Electronics</option>
+      <option value="R2">Home Goods</option>
+      <option value="R3">Travel Gear</option>
+      <option value="R4">Everyday Essentials</option>
+      <option value="R5">Entertainment</option>
+    </select>
+    <input id="name" placeholder="Your name (optional)" />
+    <button id="join">Join</button>
+  </div>
+
+  <div class="row">
+    <button id="pre">Submit Pre-Survey</button>
+    <button id="post">Submit Post-Survey</button>
+  </div>
+
+  <div class="row">
+    <input id="msg" placeholder='Type: "I will offer 50 because 60 is too expensive"' style="flex:1;" />
+    <button id="send">Send</button>
+    <input id="price" type="number" placeholder="Confirm price" style="width:140px;" />
+    <button id="confirm">Confirm Deal</button>
+  </div>
+
+  <div class="row">
+    <button id="start">Moderator: Start Round</button>
+    <button id="end">Moderator: End Round</button>
+  </div>
+
+  <h3>Your Role: <span id="role">Not assigned yet</span></h3>
+
+  <h3>Events</h3>
+  <div id="log" class="log"></div>
+
+  <script>
+    const log = (x) => {
+      const el = document.getElementById("log");
+      el.innerText += (typeof x === "string" ? x : JSON.stringify(x, null, 2)) + "\n";
+      el.scrollTop = el.scrollHeight;
+    };
+
+    const socket = io();
+    let roomId = "R1";
+
+    document.getElementById("join").onclick = () => {
+      roomId = document.getElementById("room").value;
+      const name = document.getElementById("name").value;
+      socket.emit("register", { roomId, name });
+      log("Registered to " + roomId);
+    };
+
+    document.getElementById("pre").onclick = () => {
+      socket.emit("submitPreSurvey", { responses: { ready: true } });
+      log("Pre-survey submitted");
+    };
+
+    document.getElementById("post").onclick = () => {
+      socket.emit("submitPostSurvey", { responses: { enjoyed: true } });
+      log("Post-survey submitted");
+    };
+
+    document.getElementById("send").onclick = () => {
+      const msg = document.getElementById("msg").value;
+      socket.emit("chatMessage", { message: msg });
+    };
+
+    document.getElementById("confirm").onclick = () => {
+      const p = parseFloat(document.getElementById("price").value);
+      socket.emit("confirmDeal", { price: isNaN(p) ? null : p });
+      log("ConfirmDeal sent: " + (isNaN(p) ? "(use latest)" : p));
+    };
+
+    document.getElementById("start").onclick = () => {
+      socket.emit("moderator:startRound", { roomId });
+      log("Moderator: startRound");
+    };
+
+    document.getElementById("end").onclick = () => {
+      socket.emit("moderator:endRound", { roomId });
+      log("Moderator: endRound");
+    };
+
+    // --- Listeners ---
+    ["needPreSurvey","needPostSurvey","roundStart","roundResults","roomUpdate","chatLog","dealLocked","error"]
+      .forEach(evt => socket.on(evt, (payload) => {
+        log({ evt, payload });
+
+        // Capture and display role
+        if (evt === "roomUpdate" && payload.activePairs) {
+          const me = payload.activePairs
+            .flatMap(p => p.users)
+            .find(u => u.id === socket.id);
+          if (me?.role) {
+            const roleSpan = document.getElementById("role");
+            roleSpan.innerText = me.role === "A" ? "SELLER" : "BUYER";
+            roleSpan.className = me.role === "A" ? "seller" : "buyer";
+          }
+        }
+      }));
+  </script>
+</body>
+</html>
